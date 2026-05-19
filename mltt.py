@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.optimize import lsq_linear
 
 
 class Node:
@@ -26,29 +25,20 @@ class Edge:
         self.target = target_char
         self.ndim = ndim
         self.coords = np.random.uniform(0.1, 0.9, ndim)
-        self.A = np.empty((0, ndim))
-        self.B = np.empty((0,))
+        self.S_AA = np.zeros((ndim, ndim))
+        self.S_AB = np.zeros(ndim)
+        self.S_AA += np.eye(ndim) * 1e-4
 
-    def update_equation(self, attention, coord_sum):
-        if len(self.A) > 0:
-            exact_match = np.all(self.A == attention, axis=1)
+    def add_case(self, attention, coord_sum, alpha=1.0):
+        if alpha < 1.0:
+            self.S_AA *= alpha
+            self.S_AB *= alpha
 
-            if np.any(exact_match):
-                return
+        self.S_AA += np.outer(attention, attention)
+        self.S_AB += attention * coord_sum
 
-        if len(self.A) < self.ndim:
-            self.A = np.vstack([self.A, attention])
-            self.B = np.append(self.B, coord_sum)
-        else:
-            norms_A = np.linalg.norm(self.A, axis=1, keepdims=True)
-            norm_new = np.linalg.norm(attention)
-
-            sim_with_new = np.dot(self.A, attention) / (norms_A.flatten() * norm_new)
-            closest_idx = np.argmax(sim_with_new)
-
-            self.A[closest_idx] = (self.A[closest_idx] + attention) / 2
-
-        self.coords = lsq_linear(self.A, self.B).x
+    def solve(self):
+        self.coords = np.linalg.solve(self.S_AA, self.S_AB)
 
 
 class MLTT:
@@ -67,7 +57,6 @@ class MLTT:
                 self.attns[(src, tgt)] = Attn(src, tgt, ndim)
 
     def _matrix_attention(self, context_chars, focus_char):
-        """Works."""
         ctx_len = len(context_chars)
 
         context_coords = np.array([self.nodes[c].coords for c in context_chars])
@@ -77,8 +66,7 @@ class MLTT:
 
         return np.sum(attn_coords * current_pos_matrix, axis=0)
 
-    def train(self, text):
-        """Works."""
+    def train(self, text, alpha=1.0):
         for i in range(1, len(text)):
             start_ctx = max(0, i - (self.window_size - 1))
             context = text[start_ctx:i]
@@ -86,16 +74,26 @@ class MLTT:
             curr_char = context[-1]
             next_char = text[i]
 
-            attention = self._matrix_attention(context, curr_char)
+            self.train_step(context, next_char, alpha)
 
-            edge_key = (curr_char, next_char)
-            if edge_key not in self.edges:
-                self.edges[edge_key] = Edge(curr_char, next_char, self.ndim)
+    def train_step(self, context, next_char, alpha=1.0):
+        if not context:
+            return
 
-            coord_sum = self.nodes[next_char].coord_sum
-            self.edges[edge_key].update_equation(attention, coord_sum)
+        curr_char = context[-1]
+        attention = self._matrix_attention(context, curr_char)
 
-    def generate(self, seed_text, length=30):
+        edge_key = (curr_char, next_char)
+        if edge_key not in self.edges:
+            self.edges[edge_key] = Edge(curr_char, next_char, self.ndim)
+
+        coord_sum = self.nodes[next_char].coord_sum
+
+        self.edges[edge_key].add_case(attention, coord_sum, alpha)
+        self.edges[edge_key].solve()
+
+    def generate(self, seed_text, length=None):
+        length = length or self.window_size
         result = [c for c in seed_text]
 
         for _ in range(length):
@@ -122,15 +120,3 @@ class MLTT:
             result.append(best_char)
 
         return "".join(result)
-
-
-data = 'deep learning - it is architecture' # need debug
-
-data = "deep learning architectures are amazing. machine language text transformer expands dimensions. in higher dimensions we can cross multiple hyperplanes to find perfect edge coordinates. the memory of this model scales with numpy matrix operations. hello world, welcome to n-dimensional geometry. hello zlo, what do you t hink about twenty dimensions?"
-
-i = 0
-for line in lines:
-    model.train(line)
-    i = i + 1
-    if i % 100 == 0:
-        print(f"Trained on {i} lines...")
