@@ -1,128 +1,112 @@
 import numpy as np
+from scipy.optimize import nnls
+
 
 class Node:
+
     def __init__(self, char, ndim):
         self.char = char
-        # N-мерные координаты: случайный вектор в диапазоне [0.1, 1.0]
-        self.coords = np.random.uniform(0.1, 1.0, ndim)
-        # Сумма всех N координат (наша целевая константа для уравнений)
+        self.coords = np.random.uniform(0.1, 0.9, ndim)
         self.coord_sum = np.sum(self.coords)
 
 
 class Edge:
-    def __init__(self, source_char, target_char, ndim, max_memory=None):
+
+    def __init__(self, source_char, target_char, ndim):
         self.source = source_char
         self.target = target_char
         self.ndim = ndim
-        self.max_memory = max_memory if max_memory else ndim
-        
-        # Начальные координаты ребра (N-мерный вектор)
-        self.coords = np.random.uniform(0.1, 1.0, ndim)
-        
-        # Матрицы для хранения истории (уравнений)
-        self.A = None  # Матрица векторов внимания (коэффициенты)
-        self.B = None  # Вектор целевых сумм (правая часть уравнения)
+        self.coords = np.random.uniform(0.1, 0.9, ndim)
+        self.A = np.empty((0, ndim))
+        self.B = np.empty((0,))
 
-    def update_equation(self, a_vec, target_sum):
-        """Добавляет новый контекст и пересчитывает координаты ребра."""
-        
-        if self.A is None:
-            # Первое появление связи
-            self.A = np.atleast_2d(a_vec)
-            self.B = np.array([target_sum])
+    def update_equation(self, attention, coord_sum):
+        if len(self.A) > 0:
+            exact_match = np.all(self.A == attention, axis=1)
+
+            if np.any(exact_match):
+                return
+
+        if len(self.A) < self.ndim:
+            self.A = np.vstack([self.A, attention])
+            self.B = np.append(self.B, coord_sum)
         else:
-            # Если память переполнена, "схлопываем" старый опыт с новым
-            if len(self.A) >= self.max_memory:
-                self.A[0] = (self.A[0] + a_vec) / 2
-                self.B[0] = (self.B[0] + target_sum) / 2
-            else:
-                # Иначе просто добавляем новое уравнение в систему
-                self.A = np.vstack([self.A, a_vec])
-                self.B = np.append(self.B, target_sum)
-        
-        # Находим компромиссные координаты через метод наименьших квадратов
-        # np.linalg.lstsq идеально решает систему любой формы (даже переопределенную)
-        X, _, _, _ = np.linalg.lstsq(self.A, self.B, rcond=None)
-        
-        # Не даем координатам уйти в отрицательные значения
+            norms_A = np.linalg.norm(self.A, axis=1, keepdims=True)
+            norm_new = np.linalg.norm(attention)
+
+            sim_with_new = np.dot(self.A, attention) / (norms_A.flatten() * norm_new)
+            closest_idx = np.argmax(sim_with_new)
+
+            self.A[closest_idx] = (self.A[closest_idx] + attention) / 2
+
+        X, _ = nnls(self.A, self.B)
         self.coords = np.clip(X, 0.01, None)
 
 
 class MLTT:
-    def __init__(self, alphabet, ndim=10, window_size=7):
+
+    def __init__(self, alphabet, ndim=16, window_size=16):
         self.ndim = ndim
         self.window_size = window_size
         self.alphabet = list(alphabet)
-        
-        # Инициализируем объекты Node
         self.nodes = {char: Node(char, ndim) for char in self.alphabet}
-        # Словарь объектов Edge: ключ (source_char, target_char)
         self.edges = {}
+        self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim))
 
-    def _calculate_attention(self, context_chars):
-        """Считает N-мерный вектор внимания."""
-        attn = np.zeros(self.ndim)
+    def _matrix_attention(self, context_chars):
+        """Works."""
         ctx_len = len(context_chars)
 
-        for pos, char in enumerate(context_chars, start=1):
-            weight = pos / self.window_size
-            attn += self.nodes[char].coords * weight
+        context_coords = np.array([self.nodes[c].coords for c in context_chars])
+        current_pos_matrix = self.pos_matrix[:ctx_len]
 
-        max_possible_weight = sum((i / self.window_size) for i in range(1, ctx_len + 1))
-        if max_possible_weight > 0:
-            attn /= max_possible_weight
-
-        return attn
+        return np.sum(context_coords * current_pos_matrix, axis=0)
 
     def train(self, text):
-        # Очищаем текст от неизвестных символов
-        valid_chars = [c for c in text.lower() if c in self.nodes]
+        """Works."""
+        for i in range(1, len(text)):
+            start_ctx = max(0, i - (self.window_size - 1))
+            context = text[start_ctx:i]
 
-        for i in range(1, len(valid_chars)):
-            context = valid_chars[max(0, i - self.window_size) : i]
-            target_char = valid_chars[i]
-            last_char = context[-1]
+            curr_char = context[-1]
+            next_char = text[i]
 
-            edge_key = (last_char, target_char)
+            attention = self._matrix_attention(context)
 
+            edge_key = (curr_char, next_char)
             if edge_key not in self.edges:
-                self.edges[edge_key] = Edge(last_char, target_char, self.ndim)
+                self.edges[edge_key] = Edge(curr_char, next_char, self.ndim)
 
-            a_vec = self._calculate_attention(context)
-            target_sum = self.nodes[target_char].coord_sum
+            coord_sum = self.nodes[next_char].coord_sum
+            self.edges[edge_key].update_equation(attention, coord_sum)
 
-            # Делегируем обновление самому ребру
-            self.edges[edge_key].update_equation(a_vec, target_sum)
-
-    def generate(self, seed_text, length=50):
-        result = [c for c in seed_text.lower() if c in self.nodes]
-        if not result:
-            return ""
+    def generate(self, seed_text, length=30):
+        result = [c for c in seed_text]
 
         for _ in range(length):
-            context = result[-self.window_size:]
+            start_ctx = max(0, len(result) - (self.window_size - 1))
+            context = result[start_ctx:]
+
+            attention = self._matrix_attention(context)
             last_char = context[-1]
 
-            a_vec = self._calculate_attention(context)
-            
-            best_char = ' '
-            min_error = float('inf')
+            valid_edges = [edge for (src, tgt), edge in self.edges.items() if src == last_char]
 
-            # Сканируем ребра, выходящие из last_char
-            for (src, tgt), edge in self.edges.items():
-                if src != last_char:
-                    continue
+            if not valid_edges:
+                return "".join(result)
 
-                # Предсказанная сумма = Внимание * Координаты ребра
-                predicted_sum = np.dot(a_vec, edge.coords)
-                actual_sum = self.nodes[tgt].coord_sum
+            edges_A = np.array([edge.coords for edge in valid_edges])
+            targets_B = np.array([self.nodes[edge.target].coord_sum for edge in valid_edges])
 
-                error = abs(predicted_sum - actual_sum)
+            predicted_sums = np.dot(edges_A, attention)
+            errors = np.abs(predicted_sums - targets_B)
 
-                if error < min_error:
-                    min_error = error
-                    best_char = tgt
+            best_idx = np.argmin(errors)
+            best_char = valid_edges[best_idx].target
 
             result.append(best_char)
 
         return "".join(result)
+
+
+data = 'deep learning - it is architecture' # need debug
