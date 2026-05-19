@@ -5,7 +5,7 @@ class Node:
 
     def __init__(self, char, ndim):
         self.char = char
-        self.coords = np.random.uniform(0.1, 0.9, ndim)
+        self.coords = np.random.uniform(0.1, 0.9, ndim) # NOTE: Reserved for future
         self.coord_sum = np.sum(self.coords)
 
 
@@ -27,10 +27,10 @@ class Edge:
         self.coords = np.random.uniform(0.1, 0.9, ndim)
         self.S_AA = np.zeros((ndim, ndim))
         self.S_AB = np.zeros(ndim)
-        self.S_AA += np.eye(ndim) * 1e-4
+        self.S_AA += np.eye(ndim) * 1e-4 # NOTE: Ridge regression (Tikhonov regularization)
 
     def add_case(self, attention, coord_sum, alpha=1.0):
-        if alpha < 1.0:
+        if alpha < 1.0: # NOTE: Forgetting factor (exponential decay)
             self.S_AA *= alpha
             self.S_AB *= alpha
 
@@ -38,7 +38,7 @@ class Edge:
         self.S_AB += attention * coord_sum
 
     def solve(self):
-        self.coords = np.linalg.solve(self.S_AA, self.S_AB)
+        self.coords = np.linalg.solve(self.S_AA, self.S_AB) # NOTE: Linear matrix "magic" to get optimal weights
 
 
 class MLTT:
@@ -59,16 +59,14 @@ class MLTT:
     def _matrix_attention(self, context_chars, focus_char):
         ctx_len = len(context_chars)
 
-        context_coords = np.array([self.nodes[c].coords for c in context_chars])
         attn_coords = np.array([self.attns[(c, focus_char)].coords for c in context_chars])
-
         current_pos_matrix = self.pos_matrix[:ctx_len]
 
         return np.sum(attn_coords * current_pos_matrix, axis=0)
 
     def train(self, text, alpha=1.0):
         for i in range(1, len(text)):
-            start_ctx = max(0, i - (self.window_size - 1))
+            start_ctx = max(0, i - (self.window_size - 1)) # NOTE: Sliding window
             context = text[start_ctx:i]
 
             curr_char = context[-1]
