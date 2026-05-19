@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.optimize import nnls
+from scipy.optimize import lsq_linear
 
 
 class Node:
@@ -39,9 +39,7 @@ class Edge:
 
             self.A[closest_idx] = (self.A[closest_idx] + attention) / 2
 
-        X, _ = nnls(self.A, self.B)
-        self.coords = np.clip(X, 0.01, None)
-
+        self.coords = lsq_linear(self.A, self.B).x
 
 class MLTT:
 
@@ -110,3 +108,5 @@ class MLTT:
 
 
 data = 'deep learning - it is architecture' # need debug
+
+data = "deep learning architectures are amazing. machine language text transformer expands dimensions. in higher dimensions we can cross multiple hyperplanes to find perfect edge coordinates. the memory of this model scales with numpy matrix operations. hello world, welcome to n-dimensional geometry. hello zlo, what do you t hink about twenty dimensions?"
