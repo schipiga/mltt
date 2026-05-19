@@ -10,6 +10,15 @@ class Node:
         self.coord_sum = np.sum(self.coords)
 
 
+class Attn:
+
+    def __init__(self, source_char, target_char, ndim):
+        self.source = source_char
+        self.target = target_char
+        self.ndim = ndim
+        self.coords = np.random.uniform(0.1, 0.9, ndim)
+
+
 class Edge:
 
     def __init__(self, source_char, target_char, ndim):
@@ -41,24 +50,32 @@ class Edge:
 
         self.coords = lsq_linear(self.A, self.B).x
 
+
 class MLTT:
 
     def __init__(self, alphabet, ndim=16, window_size=16):
         self.ndim = ndim
         self.window_size = window_size
         self.alphabet = list(alphabet)
+        self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim))
         self.nodes = {char: Node(char, ndim) for char in self.alphabet}
         self.edges = {}
-        self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim))
+        self.attns = {}
 
-    def _matrix_attention(self, context_chars):
+        for src in self.alphabet:
+            for tgt in self.alphabet:
+                self.attns[(src, tgt)] = Attn(src, tgt, ndim)
+
+    def _matrix_attention(self, context_chars, focus_char):
         """Works."""
         ctx_len = len(context_chars)
 
         context_coords = np.array([self.nodes[c].coords for c in context_chars])
+        attn_coords = np.array([self.attns[(c, focus_char)].coords for c in context_chars])
+
         current_pos_matrix = self.pos_matrix[:ctx_len]
 
-        return np.sum(context_coords * current_pos_matrix, axis=0)
+        return np.sum(attn_coords * current_pos_matrix, axis=0)
 
     def train(self, text):
         """Works."""
@@ -69,7 +86,7 @@ class MLTT:
             curr_char = context[-1]
             next_char = text[i]
 
-            attention = self._matrix_attention(context)
+            attention = self._matrix_attention(context, curr_char)
 
             edge_key = (curr_char, next_char)
             if edge_key not in self.edges:
@@ -85,8 +102,8 @@ class MLTT:
             start_ctx = max(0, len(result) - (self.window_size - 1))
             context = result[start_ctx:]
 
-            attention = self._matrix_attention(context)
             last_char = context[-1]
+            attention = self._matrix_attention(context, last_char)
 
             valid_edges = [edge for (src, tgt), edge in self.edges.items() if src == last_char]
 
@@ -110,3 +127,10 @@ class MLTT:
 data = 'deep learning - it is architecture' # need debug
 
 data = "deep learning architectures are amazing. machine language text transformer expands dimensions. in higher dimensions we can cross multiple hyperplanes to find perfect edge coordinates. the memory of this model scales with numpy matrix operations. hello world, welcome to n-dimensional geometry. hello zlo, what do you t hink about twenty dimensions?"
+
+i = 0
+for line in lines:
+    model.train(line)
+    i = i + 1
+    if i % 100 == 0:
+        print(f"Trained on {i} lines...")
