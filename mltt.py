@@ -3,9 +3,9 @@ import numpy as np
 
 class Node:
 
-    def __init__(self, char, ndim):
+    def __init__(self, char, window_size):
         self.char = char
-        self.coords = np.random.uniform(0.1, 0.9, ndim) # NOTE: Reserved for future
+        self.coords = np.random.uniform(0.1, 0.9, window_size) # NOTE: Reserved for futureб because now only coord_sum has a sence, because not need to calculate elements in self.S_AB like [attention * el from el in coords], according to commutative algebra, it same as multiply to its sum.
         self.coord_sum = np.sum(self.coords)
 
 
@@ -20,14 +20,16 @@ class Attn:
 
 class Edge:
 
-    def __init__(self, source_char, target_char, ndim):
+    def __init__(self, source_char, target_char, window_size, ndim):
         self.source = source_char
         self.target = target_char
+        self.window_size = window_size
         self.ndim = ndim
-        self.coords = np.random.uniform(0.1, 0.9, ndim)
-        self.S_AA = np.zeros((ndim, ndim))
-        self.S_AB = np.zeros(ndim)
-        self.S_AA += np.eye(ndim) * 1e-4 # NOTE: Ridge regression (Tikhonov regularization)
+        self.flatten_dim = window_size * ndim
+        self.coords = np.zeros(self.flatten_dim)
+        self.S_AA = np.zeros((self.flatten_dim, self.flatten_dim))
+        self.S_AB = np.zeros(self.flatten_dim)
+        self.S_AA += np.eye(self.flatten_dim) * 1e-4 # NOTE: Ridge regression (Tikhonov regularization)
 
     def add_case(self, attention, coord_sum, alpha=1.0):
         if alpha < 1.0: # NOTE: Forgetting factor (exponential decay)
@@ -35,7 +37,7 @@ class Edge:
             self.S_AB *= alpha
 
         self.S_AA += np.outer(attention, attention)
-        self.S_AB += attention * coord_sum
+        self.S_AB += attention * coord_sum # NOTE: To think is it possible to use coords instead of coord_sum, in order to train on vector. Mathematical problem, that even if to use each elements of coords, it still will be summarized to coord_sum according to current approach.
 
     def solve(self):
         self.coords = np.linalg.solve(self.S_AA, self.S_AB) # NOTE: Linear matrix "magic" to get optimal weights
@@ -48,7 +50,7 @@ class MLTT:
         self.window_size = window_size
         self.alphabet = list(alphabet)
         self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim))
-        self.nodes = {char: Node(char, ndim) for char in self.alphabet}
+        self.nodes = {char: Node(char, window_size) for char in self.alphabet}
         self.edges = {}
         self.attns = {}
 
@@ -62,7 +64,11 @@ class MLTT:
         attn_coords = np.array([self.attns[(c, focus_char)].coords for c in context_chars])
         current_pos_matrix = self.pos_matrix[:ctx_len]
 
-        return np.sum(attn_coords * current_pos_matrix, axis=0)
+        raw_attention = attn_coords * current_pos_matrix
+        padded_attention = np.zeros((self.window_size, self.ndim))
+        padded_attention[:ctx_len] = raw_attention
+
+        return padded_attention.flatten()
 
     def train(self, text, alpha=1.0):
         for i in range(1, len(text)):
@@ -83,7 +89,7 @@ class MLTT:
 
         edge_key = (curr_char, next_char)
         if edge_key not in self.edges:
-            self.edges[edge_key] = Edge(curr_char, next_char, self.ndim)
+            self.edges[edge_key] = Edge(curr_char, next_char, self.window_size, self.ndim)
 
         coord_sum = self.nodes[next_char].coord_sum
 
