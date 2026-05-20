@@ -5,8 +5,7 @@ class Node:
 
     def __init__(self, char, window_size):
         self.char = char
-        self.coords = np.random.uniform(0.1, 0.9, window_size) # NOTE: Reserved for futureб because now only coord_sum has a sence, because not need to calculate elements in self.S_AB like [attention * el from el in coords], according to commutative algebra, it same as multiply to its sum.
-        self.coord_sum = np.sum(self.coords)
+        self.coords = np.random.uniform(0.1, 0.9, window_size)
 
 
 class Attn:
@@ -14,7 +13,6 @@ class Attn:
     def __init__(self, source_char, target_char, ndim):
         self.source = source_char
         self.target = target_char
-        self.ndim = ndim
         self.coords = np.random.uniform(0.1, 0.9, ndim)
 
 
@@ -28,16 +26,16 @@ class Edge:
         self.flatten_dim = window_size * ndim
         self.coords = np.zeros(self.flatten_dim)
         self.S_AA = np.zeros((self.flatten_dim, self.flatten_dim))
-        self.S_AB = np.zeros(self.flatten_dim)
+        self.S_AB = np.zeros((self.flatten_dim, self.window_size))
         self.S_AA += np.eye(self.flatten_dim) * 1e-4 # NOTE: Ridge regression (Tikhonov regularization)
 
-    def add_case(self, attention, coord_sum, alpha=1.0):
+    def add_case(self, attention, target_coords, alpha=1.0):
         if alpha < 1.0: # NOTE: Forgetting factor (exponential decay)
             self.S_AA *= alpha
             self.S_AB *= alpha
 
         self.S_AA += np.outer(attention, attention)
-        self.S_AB += attention * coord_sum # NOTE: To think is it possible to use coords instead of coord_sum, in order to train on vector. Mathematical problem, that even if to use each elements of coords, it still will be summarized to coord_sum according to current approach.
+        self.S_AB += np.outer(attention, target_coords)
 
     def solve(self):
         self.coords = np.linalg.solve(self.S_AA, self.S_AB) # NOTE: Linear matrix "magic" to get optimal weights
@@ -91,9 +89,9 @@ class MLTT:
         if edge_key not in self.edges:
             self.edges[edge_key] = Edge(curr_char, next_char, self.window_size, self.ndim)
 
-        coord_sum = self.nodes[next_char].coord_sum
+        coords = self.nodes[next_char].coords
 
-        self.edges[edge_key].add_case(attention, coord_sum, alpha)
+        self.edges[edge_key].add_case(attention, coords, alpha)
         self.edges[edge_key].solve()
 
     def generate(self, seed_text, length=None):
@@ -112,11 +110,10 @@ class MLTT:
             if not valid_edges:
                 return "".join(result)
 
-            edges_A = np.array([edge.coords for edge in valid_edges])
-            targets_B = np.array([self.nodes[edge.target].coord_sum for edge in valid_edges])
-
-            predicted_sums = np.dot(edges_A, attention)
-            errors = np.abs(predicted_sums - targets_B)
+            edges_matrices = np.array([edge.coords for edge in valid_edges])
+            targets_vectors = np.array([self.nodes[edge.target].coords for edge in valid_edges])
+            predicted_vectors = np.einsum('i,kij->kj', attention, edges_matrices)
+            errors = np.linalg.norm(predicted_vectors - targets_vectors, axis=1)
 
             best_idx = np.argmin(errors)
             best_char = valid_edges[best_idx].target
