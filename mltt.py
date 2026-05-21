@@ -1,3 +1,4 @@
+import gc
 import numpy as np
 import tiktoken
 
@@ -116,16 +117,27 @@ class MLTT:
         edge.add_case(attention, coords, alpha)
         edge.is_wip = True
 
-    def solve(self):
+    def solve(self, with_release=False):
+        i = 0
         for edge in self.edges.values():
             if edge.is_wip:
                 edge.solve()
                 edge.is_wip = False
 
+                if with_release:
+                    if hasattr(edge, 'S_AA'): del edge.S_AA
+                    if hasattr(edge, 'S_AB'): del edge.S_AB
+
+            i += 1
+            if i % 100 == 0:
+                gc.collect()
+                print(f"Solved {i} edges...")
+
     def release(self):
         for edge in self.edges.values():
-            delattr(edge, 'S_AA')
-            delattr(edge, 'S_AB')
+            if hasattr(edge, 'S_AA'): del edge.S_AA
+            if hasattr(edge, 'S_AB'): del edge.S_AB
+        gc.collect()
 
     def generate(self, seed_text, length=None, temperature=0.0):
         length = length or self.window_size
