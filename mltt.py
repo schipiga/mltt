@@ -3,6 +3,7 @@ import tiktoken
 
 
 enc = tiktoken.get_encoding('gpt2')
+END_PUNCTUATION = ('.', '!', '?', ".'", "!'","?'", '."', '!"', '?"')
 
 
 class Node:
@@ -23,6 +24,7 @@ class Attn:
 class Edge:
 
     def __init__(self, source_char, target_char, window_size, ndim):
+        self.is_wip = None
         self.source = source_char
         self.target = target_char
         self.window_size = window_size
@@ -84,6 +86,9 @@ class MLTT:
 
     def train(self, text, alpha=1.0):
         tokens = enc.encode(text)
+
+        if any(text.endswith(punct) for punct in END_PUNCTUATION):
+            tokens += [enc.eot_token]
         
         for i in range(1, len(tokens)):
             start_ctx = max(0, i - (self.window_size - 1))
@@ -106,18 +111,23 @@ class MLTT:
             self.edges[edge_key] = Edge(curr_token, next_token, self.window_size, self.ndim)
 
         coords = self._get_node(next_token).coords
+        edge = self.edges[edge_key]
 
-        self.edges[edge_key].add_case(attention, coords, alpha)
+        edge.add_case(attention, coords, alpha)
+        edge.is_wip = True
 
     def solve(self):
-        i = 0
         for edge in self.edges.values():
-            edge.solve()
-            i += 1
-            if i % 100 == 0:
-                print(f"Solved {i} edges...")
+            if edge.is_wip:
+                edge.solve()
+                edge.is_wip = False
 
-    def generate(self, seed_text, length=None):
+    def release(self):
+        for edge in self.edges.values():
+            delattr(edge, 'S_AA')
+            delattr(edge, 'S_AB')
+
+    def generate(self, seed_text, length=None, temperature=0.0):
         length = length or self.window_size
 
         result_tokens = enc.encode(seed_text)
@@ -141,8 +151,21 @@ class MLTT:
             predicted_vectors = np.einsum('i,kij->kj', attention, edges_matrices)
             errors = np.linalg.norm(predicted_vectors - targets_vectors, axis=1)
 
-            best_idx = np.argmin(errors)
+            if temperature <= 1e-5: # NOTE: "Safe zero" threshold to prevent numerical issues
+                best_idx = np.argmin(errors)
+            else:
+                logits = -errors / temperature
+                logits -= np.max(logits)
+                
+                exp_logits = np.exp(logits)
+                probs = exp_logits / np.sum(exp_logits)
+
+                best_idx = np.random.choice(len(valid_edges), p=probs)
+
             best_token = valid_edges[best_idx].target
+
+            if best_token == enc.eot_token:
+                break
 
             result_tokens.append(best_token)
 
