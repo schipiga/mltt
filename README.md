@@ -45,11 +45,10 @@ inspired by the human brain, to autonomously process unstructured data, recogniz
 and make predictions. It is the driving force behind modern artificial intelligence, including 
 computer vision and language models."""
 
-alphabet = set(data)
-
-model = MLTT(alphabet, ndim=64, window_size=32)
+model = MLTT()
 
 model.train(data)
+model.solve()
 
 output = model.generate("Deep")
 
@@ -59,34 +58,35 @@ print(output)
 ### Tiny Shakespeare Example
 
 ```ipython
-model = MLTT(set(txt), ndim=32, window_size=32) # 256 - max performance in tested laptop
+model = MLTT(set(txt), ndim=12, window_size=8)
+lines = [line for line in txt.split("\n") if line]
 
-for line in txt.split('\n')
+for line in lines:
     model.train(line)
 
-In [19]: model.generate('Who', length=128)
-Out[19]: "Whoe, mugrsw rubs, ck'd I: roqunuftssqu!-Meg.  kf-og?-y-wff Gr! ry g: LY:'DO:'dwmle;'d'g;'ghhhy!'d c!-HEObds?'bt'b; s CLAMPrkys'Roy"
+In [9]: model.generate('How are you?', length=16)
+Out[9]: "How are you? In his presence must hear your daughter is gone till you'll straight leg and deep"
 
-In [20]: model.generate('How', length=128)
-Out[20]: "How! Waren! irdf s l kw lengyn,'TAEctf?'STyvui, zyf?'CEYOrquzynmiisib.-ax, vu!'d;-izl:'dy!-pt-Mikm? Wa. UGORTIA:-oja?--MPrvoh; NG Y"
+In [10]: model.generate('What is your name?', length=16)
+Out[10]: "What is your name? a consents but severe. Has he knows whoso empties' pleasure."
 
-In [21]: model.generate('What', length=128)
-Out[21]: "What! D: L: foy? a Sms. r: Ve On:-P:-N:-ora.'MIf?'dce?-i,'dc!-equn'g HATub'YOvyme'CKn!-y Sw p!'RWow;-u-BRRGALE:-g:-nnzyhy!'JUpyw-b,-"
+In [11]: model.generate('ROMEO:', length=16)
+Out[11]: "ROMEO: let it concerns to ask me rather glister enter'd when your sheep-work"
 
-In [22]: model.generate('Why', length=128)
-Out[22]: "Why? Fod odm lmy lntnc tilielod td:-nmlufsque yf.-Hy'dgfus, u!-w?'i-lc.'LEublng?-ynd?'why!'g:'r; Sivud;-fax,'mp:-l;'Y FOMu? '?--iii"
+In [12]: model.generate('KING', length=16)
+Out[12]: 'KING RICHARD III: good prayers for England. My father so wise, lay'
 
-In [23]: model.generate('Where', length=128)
-Out[23]: "Whereory vicoverjod-jovy imm? s;'hyfaudgrgnnveodntt, ourpfs! A: ru:-iebja-ft?-eynzer-juk; h!'p!'rrdjomsft.'df? f  's; QUGSldd. kfy' z"
+In [13]: model.generate('I want to', length=16)
+Out[13]: 'I want to hope good supporters are certainly whipped out: mark me pains to great; a paper'
 
-In [24]: model.generate('How are you?', length=128)
-Out[24]: "How are you? TRLy: a; l w h'ft'se Wasgfldc,'b;-Gunorb;-hyhtmp!-att?'ep, rjuib!'d!-e?'sc. tw;-'d? 'Y u? Mer-P sgieffa: s, u-p?'dncibdp'w UFFO"
+In [14]: model.generate("Let's go to", length=16)
+Out[14]: "Let's go to one so old as easy matter which you no title of green! Well, together"
 
-In [25]: model.generate('What are you doing?', length=128)
-Out[25]: "What are you doing?-injer inju:-kojajaw:'!'dpftfu-M:-ore,-yva sl; krgmy: hy insy w: dgr YO: qu w rbi,-pm; lcek?-qug; d-b,-IEdc; mt'rh: ds OP:-vaja:"
+In [15]: model.generate("The time will come", length=16)
+Out[15]: 'The time will come when thou shalt wish for me yet his face to dissemble deeply their fortunes both'
 
-In [26]: model.generate('What is your name?', length=128)
-Out[26]: "What is your name? IEONLEO! mb, LIs?-f-y!'STyvyw! p?-Crwnvy b!-Muajau!-ymw BI: ib.-jas. rwstg? Je.'R: f Niz,-n; zz, QUMIrs!-mn, vittgsdja?-afta t."
+In [16]: model.generate("Time comes", length=16)
+Out[16]: 'Time comes with tender patience here was Henry from Burgundy, rice, learn, embrace but'
 ```
 
-While the raw text outputs are expectedly chaotic at this scale, fascinating statistical emergence can already be observed -- working with capital letters, spaces, apostrophes, etc. Perhaps this is a sign of emerging order.
+The result is a funny statistical tidbit, some of whose meaningful phrases are missing from the original text, for example, "My father so wise," -- I checked. I think the results should be better with higher dimensions.

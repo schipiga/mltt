@@ -104,7 +104,7 @@ lines = [
 ]
 
 
-model = MLTT(alphabet=set("".join(lines)), ndim=64, window_size=32)
+model = MLTT(ndim=12, window_size=8)
 
 i = 0
 for line in lines:
@@ -112,3 +112,4 @@ for line in lines:
     i += 1
     if i % 10 == 0:
         print(f"Trained on {i} phrases...")
+model.solve()

@@ -1,4 +1,8 @@
 import numpy as np
+import tiktoken
+
+
+enc = tiktoken.get_encoding('gpt2')
 
 
 class Node:
@@ -43,28 +47,34 @@ class Edge:
 
 class MLTT:
 
-    def __init__(self, alphabet, ndim=16, window_size=16):
+    def __init__(self, ndim=16, window_size=16):
         self.ndim = ndim
         self.window_size = window_size
-        self.alphabet = list(alphabet)
         self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim))
-        self.nodes = {char: Node(char, window_size) for char in self.alphabet}
+
+        self.nodes = {}
         self.edges = {}
         self.attns = {}
 
-        for src in self.alphabet:
-            for tgt in self.alphabet:
-                self.attns[(src, tgt)] = Attn(src, tgt, ndim)
-
         self._attn_buffer = np.zeros((window_size, ndim))
 
-    def _matrix_attention(self, context_chars, focus_char):
-        ctx_len = len(context_chars)
+    def _get_node(self, token_id):
+        if token_id not in self.nodes:
+            self.nodes[token_id] = Node(token_id, self.window_size)
+        return self.nodes[token_id]
 
+    def _get_attn(self, src_token, tgt_token):
+        key = (src_token, tgt_token)
+        if key not in self.attns:
+            self.attns[key] = Attn(src_token, tgt_token, self.ndim)
+        return self.attns[key]
+
+    def _matrix_attention(self, context_tokens, focus_token):
+        ctx_len = len(context_tokens)
         self._attn_buffer[:ctx_len] = 0.0 
 
-        for idx, c in enumerate(context_chars):
-            self._attn_buffer[idx] = self.attns[(c, focus_char)].coords
+        for idx, t in enumerate(context_tokens):
+            self._attn_buffer[idx] = self._get_attn(t, focus_token).coords
 
         self._attn_buffer[:ctx_len] *= self.pos_matrix[:ctx_len]
 
@@ -74,58 +84,67 @@ class MLTT:
         return self._attn_buffer.flatten()
 
     def train(self, text, alpha=1.0):
-        for i in range(1, len(text)):
-            start_ctx = max(0, i - (self.window_size - 1)) # NOTE: Sliding window
-            context = text[start_ctx:i]
+        tokens = enc.encode(text)
+        
+        for i in range(1, len(tokens)):
+            start_ctx = max(0, i - (self.window_size - 1))
+            context = tokens[start_ctx:i]
 
-            curr_char = context[-1]
-            next_char = text[i]
+            curr_token = context[-1]
+            next_token = tokens[i]
 
-            self.train_step(context, next_char, alpha)
+            self.train_step(context, next_token, alpha)
 
-    def train_step(self, context, next_char, alpha=1.0):
+    def train_step(self, context, next_token, alpha=1.0):
         if not context:
             return
 
-        curr_char = context[-1]
-        attention = self._matrix_attention(context, curr_char)
+        curr_token = context[-1]
+        attention = self._matrix_attention(context, curr_token)
 
-        edge_key = (curr_char, next_char)
+        edge_key = (curr_token, next_token)
         if edge_key not in self.edges:
-            self.edges[edge_key] = Edge(curr_char, next_char, self.window_size, self.ndim)
+            self.edges[edge_key] = Edge(curr_token, next_token, self.window_size, self.ndim)
 
-        coords = self.nodes[next_char].coords
+        coords = self._get_node(next_token).coords
 
         self.edges[edge_key].add_case(attention, coords, alpha)
 
     def solve(self):
+        i = 0
         for edge in self.edges.values():
             edge.solve()
+            i += 1
+            if i % 100 == 0:
+                print(f"Solved {i} edges...")
 
     def generate(self, seed_text, length=None):
         length = length or self.window_size
-        result = [c for c in seed_text]
+
+        result_tokens = enc.encode(seed_text)
 
         for _ in range(length):
-            start_ctx = max(0, len(result) - (self.window_size - 1))
-            context = result[start_ctx:]
+            start_ctx = max(0, len(result_tokens) - (self.window_size - 1))
+            context = result_tokens[start_ctx:]
 
-            last_char = context[-1]
-            attention = self._matrix_attention(context, last_char)
+            last_token = context[-1]
+            attention = self._matrix_attention(context, last_token)
 
-            valid_edges = [edge for (src, tgt), edge in self.edges.items() if src == last_char]
+            valid_edges = [edge for (src, tgt), edge in self.edges.items() if src == last_token]
 
             if not valid_edges:
-                return "".join(result)
+                break
 
             edges_matrices = np.array([edge.coords for edge in valid_edges])
-            targets_vectors = np.array([self.nodes[edge.target].coords for edge in valid_edges])
+
+            targets_vectors = np.array([self._get_node(edge.target).coords for edge in valid_edges])
+
             predicted_vectors = np.einsum('i,kij->kj', attention, edges_matrices)
             errors = np.linalg.norm(predicted_vectors - targets_vectors, axis=1)
 
             best_idx = np.argmin(errors)
-            best_char = valid_edges[best_idx].target
+            best_token = valid_edges[best_idx].target
 
-            result.append(best_char)
+            result_tokens.append(best_token)
 
-        return "".join(result)
+        return enc.decode(result_tokens)
