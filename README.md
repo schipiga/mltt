@@ -59,39 +59,34 @@ print(output)
 ### Tiny Shakespeare Example
 
 ```ipython
-model = MLTT(set(txt), ndim=256, window_size=64) # 256 - max performance in tested laptop
+model = MLTT(set(txt), ndim=32, window_size=32) # 256 - max performance in tested laptop
 
 for line in txt.split('\n')
     model.train(line)
 
-In [104]: model.generate('Who')
-Out[104]: "Who? Varmo-bbja; YORate. b Ve.'a$lyllc':-n.'Waje,-Lell;-m? u;-mpau."
+In [19]: model.generate('Who', length=128)
+Out[19]: "Whoe, mugrsw rubs, ck'd I: roqunuftssqu!-Meg.  kf-og?-y-wff Gr! ry g: LY:'DO:'dwmle;'d'g;'ghhhy!'d c!-HEObds?'bt'b; s CLAMPrkys'Roy"
 
-In [105]: model.generate('How')
-Out[105]: "How! aye; Wod yckeximf wk:-avek,' Flpy'Sdi.-d, ocy,-m Whtm; Th; Bua"
+In [20]: model.generate('How', length=128)
+Out[20]: "How! Waren! irdf s l kw lengyn,'TAEctf?'STyvui, zyf?'CEYOrquzynmiisib.-ax, vu!'d;-izl:'dy!-pt-Mikm? Wa. UGORTIA:-oja?--MPrvoh; NG Y"
 
-In [106]: model.generate('What')
-Out[106]: "What! Frt-f? if;'Terod;'d! oy:'bngtluf;-voqu.-ncoequf; ja tartn:'Ho,"
+In [21]: model.generate('What', length=128)
+Out[21]: "What! D: L: foy? a Sms. r: Ve On:-P:-N:-ora.'MIf?'dce?-i,'dc!-equn'g HATub'YOvyme'CKn!-y Sw p!'RWow;-u-BRRGALE:-g:-nnzyhy!'JUpyw-b,-"
 
-In [107]: model.generate('Why')
-Out[107]: "Why? Fomakum; fe! Frd-ci, My?'p-ajohuabhi. fu!'b: onco;'dspiapiom; "
+In [22]: model.generate('Why', length=128)
+Out[22]: "Why? Fod odm lmy lntnc tilielod td:-nmlufsque yf.-Hy'dgfus, u!-w?'i-lc.'LEublng?-ynd?'why!'g:'r; Sivud;-fax,'mp:-l;'Y FOMu? '?--iii"
 
-In [108]: model.generate('Where')
-Out[108]: "Wherebopa St'II;  out.'; dnkf?-g'Vaviavegus b:'eg'tn'sto?-m; Lumpy:'t"
+In [23]: model.generate('Where', length=128)
+Out[23]: "Whereory vicoverjod-jovy imm? s;'hyfaudgrgnnveodntt, ourpfs! A: ru:-iebja-ft?-eynzer-juk; h!'p!'rrdjomsft.'df? f  's; QUGSldd. kfy' z"
 
-In [118]: model.generate('How are you?')
-Out[118]: "How are you? ys ARE Bau.'ssitcta$ly'dr,': qum?-sp, Yoqungite?-tr.'de?--tr.-d"
+In [24]: model.generate('How are you?', length=128)
+Out[24]: "How are you? TRLy: a; l w h'ft'se Wasgfldc,'b;-Gunorb;-hyhtmp!-att?'ep, rjuib!'d!-e?'sc. tw;-'d? 'Y u? Mer-P sgieffa: s, u-p?'dncibdp'w UFFO"
 
-In [119]: model.generate('What are you doing?')
-Out[119]: "What are you doing?'ln &cirlgrlg-ia;-O?'dg-n ve Yo. Ditap Qu?-why.'tau?----m;----da"
+In [25]: model.generate('What are you doing?', length=128)
+Out[25]: "What are you doing?-injer inju:-kojajaw:'!'dpftfu-M:-ore,-yva sl; krgmy: hy insy w: dgr YO: qu w rbi,-pm; lcek?-qug; d-b,-IEdc; mt'rh: ds OP:-vaja:"
 
-In [120]: model.generate('What is your name?')
-Out[120]: "What is your name?'lf! Bosughm r-ogni. Dica!-Lo, ju:-dltw'Bu; akscaug:'cct w'ds;'d"
+In [26]: model.generate('What is your name?', length=128)
+Out[26]: "What is your name? IEONLEO! mb, LIs?-f-y!'STyvyw! p?-Crwnvy b!-Muajau!-ymw BI: ib.-jas. rwstg? Je.'R: f Niz,-n; zz, QUMIrs!-mn, vittgsdja?-afta t."
 ```
 
-#### Key Observations -- Seems:
-
-- **Contextual Marks:** It understands special marks after question words (`Who?`, `How!`).
-- **Capitalization:** It uses capital letters normally and opens sub-contexts for character names (`YORate`, `Vaviavegus`).
-- **Word Length:** It creates words of a normal, human-like length (2-6 characters) rather than endless strings.
-- **Whitespace:** It distributes spaces and punctuation naturally, preserving standard text rhythm.
+While the raw text outputs are expectedly chaotic at this scale, fascinating statistical emergence can already be observed -- working with capital letters, spaces, apostrophes, etc. Perhaps this is a sign of emerging order.
