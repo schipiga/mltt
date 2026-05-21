@@ -1,4 +1,4 @@
-dialogue = [
+lines = [
     "hello, is anyone there?",
     "hello! i am your virtual assistant. how can i help you today?",
     "can you explain what a matrix is?",
@@ -103,9 +103,12 @@ dialogue = [
     "goodbye! come back anytime you need to solve linear systems."
 ]
 
-model = MLTT(alphabet=set("".join(dialogue)), ndim=128, window_size=78)
 
-for phrase in dialogue:
-    model.train(phrase)
+model = MLTT(alphabet=set("".join(lines)), ndim=64, window_size=32)
 
-print(model.generate("can i"))
+i = 0
+for line in lines:
+    model.train(line)
+    i += 1
+    if i % 10 == 0:
+        print(f"Trained on {i} phrases...")

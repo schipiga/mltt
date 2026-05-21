@@ -56,17 +56,22 @@ class MLTT:
             for tgt in self.alphabet:
                 self.attns[(src, tgt)] = Attn(src, tgt, ndim)
 
+        self._attn_buffer = np.zeros((window_size, ndim))
+
     def _matrix_attention(self, context_chars, focus_char):
         ctx_len = len(context_chars)
 
-        attn_coords = np.array([self.attns[(c, focus_char)].coords for c in context_chars])
-        current_pos_matrix = self.pos_matrix[:ctx_len]
+        self._attn_buffer[:ctx_len] = 0.0 
 
-        raw_attention = attn_coords * current_pos_matrix
-        padded_attention = np.zeros((self.window_size, self.ndim))
-        padded_attention[:ctx_len] = raw_attention
+        for idx, c in enumerate(context_chars):
+            self._attn_buffer[idx] = self.attns[(c, focus_char)].coords
 
-        return padded_attention.flatten()
+        self._attn_buffer[:ctx_len] *= self.pos_matrix[:ctx_len]
+
+        if ctx_len < self.window_size:
+            self._attn_buffer[ctx_len:] = 0.0
+
+        return self._attn_buffer.flatten()
 
     def train(self, text, alpha=1.0):
         for i in range(1, len(text)):
@@ -92,7 +97,10 @@ class MLTT:
         coords = self.nodes[next_char].coords
 
         self.edges[edge_key].add_case(attention, coords, alpha)
-        self.edges[edge_key].solve()
+
+    def solve(self):
+        for edge in self.edges.values():
+            edge.solve()
 
     def generate(self, seed_text, length=None):
         length = length or self.window_size
