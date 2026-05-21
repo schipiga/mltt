@@ -55,8 +55,9 @@ class MLTT:
         self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim))
 
         self.nodes = {}
-        self.edges = {}
         self.attns = {}
+        self.edges = {}
+        self.edges_by_src = {}
 
         self._attn_buffer = np.zeros((window_size, ndim))
 
@@ -109,7 +110,12 @@ class MLTT:
 
         edge_key = (curr_token, next_token)
         if edge_key not in self.edges:
-            self.edges[edge_key] = Edge(curr_token, next_token, self.window_size, self.ndim)
+            edge = Edge(curr_token, next_token, self.window_size, self.ndim)
+            self.edges[edge_key] = edge
+
+            if curr_token not in self.edges_by_src:
+                self.edges_by_src[curr_token] = []
+            self.edges_by_src[curr_token].append(edge)
 
         coords = self._get_node(next_token).coords
         edge = self.edges[edge_key]
@@ -118,10 +124,14 @@ class MLTT:
         edge.is_wip = True
 
     def solve(self):
+        i = 0
         for edge in self.edges.values():
             if edge.is_wip:
                 edge.solve()
                 edge.is_wip = False
+            i += 1
+            if i % 10 == 0:
+                print(f"Solved {i} edges...")
 
     def release(self):
         for edge in self.edges.values():
@@ -145,7 +155,7 @@ class MLTT:
             last_token = context[-1]
             attention = self._matrix_attention(context, last_token)
 
-            valid_edges = [edge for (src, tgt), edge in self.edges.items() if src == last_token]
+            valid_edges = self.edges_by_src.get(last_token, [])
 
             if not valid_edges:
                 break
