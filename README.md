@@ -89,4 +89,4 @@ In [16]: model.generate("Time comes", length=16)
 Out[16]: 'Time comes with tender patience here was Henry from Burgundy, rice, learn, embrace but'
 ```
 
-The result is a funny statistical tidbit, some of whose meaningful phrases are missing from the original text, for example, "My father so wise," -- I checked. I think the results should be better with higher dimensions.
+The result is a funny statistical babbler, some of whose meaningful phrases are missing from the original text, for example, "My father so wise,". I think the results should be better with higher dimensions.

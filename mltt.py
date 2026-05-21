@@ -29,9 +29,8 @@ class Edge:
         self.ndim = ndim
         self.flatten_dim = window_size * ndim
         self.coords = np.zeros(self.flatten_dim)
-        self.S_AA = np.zeros((self.flatten_dim, self.flatten_dim))
+        self.S_AA = np.eye(self.flatten_dim) * 1e-4 # NOTE: Ridge regression (Tikhonov regularization)
         self.S_AB = np.zeros((self.flatten_dim, self.window_size))
-        self.S_AA += np.eye(self.flatten_dim) * 1e-4 # NOTE: Ridge regression (Tikhonov regularization)
 
     def add_case(self, attention, target_coords, alpha=1.0):
         if alpha < 1.0: # NOTE: Forgetting factor (exponential decay)
