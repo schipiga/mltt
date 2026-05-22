@@ -4,6 +4,8 @@ import tiktoken
 
 
 enc = tiktoken.get_encoding('gpt2')
+stype = np.float16
+ctype = np.float32
 END_PUNCTUATION = ('.', '!', '?', ".'", "!'","?'", '."', '!"', '?"')
 
 
@@ -11,7 +13,7 @@ class Node:
 
     def __init__(self, char, window_size):
         self.char = char
-        self.coords = np.random.uniform(0.1, 0.9, window_size)
+        self.coords = np.random.uniform(0.1, 0.9, window_size).astype(stype)
 
 
 class Attn:
@@ -19,7 +21,7 @@ class Attn:
     def __init__(self, source_char, target_char, ndim):
         self.source = source_char
         self.target = target_char
-        self.coords = np.random.uniform(0.1, 0.9, ndim)
+        self.coords = np.random.uniform(0.1, 0.9, ndim).astype(stype)
 
 
 class Edge:
@@ -31,20 +33,39 @@ class Edge:
         self.window_size = window_size
         self.ndim = ndim
         self.flatten_dim = window_size * ndim
-        self.coords = np.zeros(self.flatten_dim)
-        self.S_AA = np.eye(self.flatten_dim) * 1e-4 # NOTE: Ridge regression (Tikhonov regularization)
-        self.S_AB = np.zeros((self.flatten_dim, self.window_size))
+
+        self.coords = np.empty(0, dtype=stype)
+        self.S_AA = np.zeros((self.flatten_dim, self.flatten_dim), dtype=stype)
+        self.S_AB = np.zeros((self.flatten_dim, self.window_size), dtype=stype)
 
     def add_case(self, attention, target_coords, alpha=1.0):
-        if alpha < 1.0: # NOTE: Forgetting factor (exponential decay)
-            self.S_AA *= alpha
-            self.S_AB *= alpha
+        S_AA_comp = self.S_AA.astype(ctype)
+        S_AB_comp = self.S_AB.astype(ctype)
 
-        self.S_AA += np.outer(attention, attention)
-        self.S_AB += np.outer(attention, target_coords)
+        attn = attention.astype(ctype)
+        tgt = target_coords.astype(ctype)
+
+        if alpha < 1.0:
+            S_AA_comp *= ctype(alpha)
+            S_AB_comp *= ctype(alpha)
+
+        S_AA_comp += np.outer(attn, attn)
+        S_AB_comp += np.outer(attn, tgt)
+
+        self.S_AA = S_AA_comp.astype(stype)
+        self.S_AB = S_AB_comp.astype(stype)
+        self.is_wip = True
 
     def solve(self):
-        self.coords = np.linalg.solve(self.S_AA, self.S_AB) # NOTE: Linear matrix "magic" to get optimal weights
+        if self.is_wip:
+            S_AA_comp = self.S_AA.astype(ctype)
+            S_AB_comp = self.S_AB.astype(ctype)
+
+            S_AA_tmp = S_AA_comp + np.eye(self.flatten_dim, dtype=ctype) * 1e-4 # NOTE: Ridge regression (Tikhonov regularization)
+            raw_coords = np.linalg.solve(S_AA_tmp, S_AB_comp)
+
+            self.coords = raw_coords.astype(stype)
+            self.is_wip = False
 
 
 class MLTT:
@@ -52,14 +73,14 @@ class MLTT:
     def __init__(self, ndim=16, window_size=16):
         self.ndim = ndim
         self.window_size = window_size
-        self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim))
+        self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim)).astype(stype)
 
         self.nodes = {}
         self.attns = {}
         self.edges = {}
         self.edges_by_src = {}
 
-        self._attn_buffer = np.zeros((window_size, ndim))
+        self._attn_buffer = np.zeros((window_size, ndim), dtype=stype)
 
     def _get_node(self, token_id):
         if token_id not in self.nodes:
@@ -84,7 +105,7 @@ class MLTT:
         if ctx_len < self.window_size:
             self._attn_buffer[ctx_len:] = 0.0
 
-        return self._attn_buffer.flatten()
+        return self._attn_buffer.ravel()
 
     def train(self, text, alpha=1.0):
         tokens = enc.encode(text)
@@ -126,11 +147,9 @@ class MLTT:
     def solve_debug(self):
         i = 0
         for edge in self.edges.values():
-            if edge.is_wip:
-                edge.solve()
-                edge.is_wip = False
-                edge.S_AA = np.empty((0, 0))
-                edge.S_AB = np.empty((0, 0))
+            edge.solve()
+            edge.S_AA = np.empty((0, 0), dtype=stype)
+            edge.S_AB = np.empty((0, 0), dtype=stype)
 
             i += 1
             if i % 100 == 0:
@@ -139,14 +158,12 @@ class MLTT:
 
     def solve(self):
         for edge in self.edges.values():
-            if edge.is_wip:
-                edge.solve()
-                edge.is_wip = False
+            edge.solve()
 
     def release(self):
         for edge in self.edges.values():
-            edge.S_AA = np.empty((0, 0))
-            edge.S_AB = np.empty((0, 0))
+            edge.S_AA = np.empty((0, 0), dtype=stype)
+            edge.S_AB = np.empty((0, 0), dtype=stype)
 
         self.train = None
         self.train_step = None
@@ -170,11 +187,11 @@ class MLTT:
             if not valid_edges:
                 break
 
-            edges_matrices = np.array([edge.coords for edge in valid_edges])
+            edges_matrices = np.array([edge.coords for edge in valid_edges], dtype=ctype)
+            targets_vectors = np.array([self._get_node(edge.target).coords for edge in valid_edges], dtype=ctype)
+            attn_comp = attention.astype(ctype)
 
-            targets_vectors = np.array([self._get_node(edge.target).coords for edge in valid_edges])
-
-            predicted_vectors = np.einsum('i,kij->kj', attention, edges_matrices)
+            predicted_vectors = np.einsum('i,kij->kj', attn_comp, edges_matrices)
             errors = np.linalg.norm(predicted_vectors - targets_vectors, axis=1)
 
             if temperature <= 1e-5: # NOTE: "Safe zero" threshold to prevent numerical issues
@@ -196,3 +213,9 @@ class MLTT:
             result_tokens.append(best_token)
 
         return enc.decode(result_tokens)
+
+    def learn(self, text, length=512):
+        self.train(text)
+        self.solve()
+
+        return self.generate(text, length=length)
