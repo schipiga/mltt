@@ -123,15 +123,25 @@ class MLTT:
         edge.add_case(attention, coords, alpha)
         edge.is_wip = True
 
-    def solve(self):
+    def solve_debug(self):
         i = 0
         for edge in self.edges.values():
             if edge.is_wip:
                 edge.solve()
                 edge.is_wip = False
+                edge.S_AA = np.empty((0, 0))
+                edge.S_AB = np.empty((0, 0))
+
             i += 1
-            if i % 10 == 0:
+            if i % 100 == 0:
+                gc.collect()
                 print(f"Solved {i} edges...")
+
+    def solve(self):
+        for edge in self.edges.values():
+            if edge.is_wip:
+                edge.solve()
+                edge.is_wip = False
 
     def release(self):
         for edge in self.edges.values():
