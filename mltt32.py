@@ -42,9 +42,12 @@ class Edge:
 
         self.S_AA += np.outer(attention, attention)
         self.S_AB += np.outer(attention, target_coords)
+        self.is_wip = True
 
     def solve(self):
-        self.coords = np.linalg.solve(self.S_AA, self.S_AB) # NOTE: Linear matrix "magic" to get optimal weights
+        if self.is_wip:
+            self.coords = np.linalg.solve(self.S_AA, self.S_AB) # NOTE: Linear matrix "magic" to get optimal weights
+            self.is_wip = False
 
 
 class MLTT:
@@ -86,10 +89,10 @@ class MLTT:
 
         return self._attn_buffer.flatten()
 
-    def train(self, text, alpha=1.0):
+    def train(self, text, alpha=1.0, skip_end=False):
         tokens = enc.encode(text)
 
-        if any(text.endswith(punct) for punct in END_PUNCTUATION):
+        if not skip_end and any(text.endswith(punct) for punct in END_PUNCTUATION):
             tokens += [enc.eot_token]
         
         for i in range(1, len(tokens)):
@@ -121,16 +124,13 @@ class MLTT:
         edge = self.edges[edge_key]
 
         edge.add_case(attention, coords, alpha)
-        edge.is_wip = True
 
     def solve_debug(self):
         i = 0
         for edge in self.edges.values():
-            if edge.is_wip:
-                edge.solve()
-                edge.is_wip = False
-                edge.S_AA = np.empty((0, 0))
-                edge.S_AB = np.empty((0, 0))
+            edge.solve()
+            edge.S_AA = np.empty((0, 0))
+            edge.S_AB = np.empty((0, 0))
 
             i += 1
             if i % 100 == 0:
@@ -139,9 +139,7 @@ class MLTT:
 
     def solve(self):
         for edge in self.edges.values():
-            if edge.is_wip:
-                edge.solve()
-                edge.is_wip = False
+            edge.solve()
 
     def release(self):
         for edge in self.edges.values():
@@ -198,7 +196,7 @@ class MLTT:
         return enc.decode(result_tokens)
 
     def learn(self, text, length=512):
-        self.train(text)
+        self.train(text, skip_end=True)
         self.solve()
 
         return self.generate(text, length=length)

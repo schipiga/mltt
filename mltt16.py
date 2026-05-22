@@ -107,10 +107,10 @@ class MLTT:
 
         return self._attn_buffer.ravel()
 
-    def train(self, text, alpha=1.0):
+    def train(self, text, alpha=1.0, skip_end=False):
         tokens = enc.encode(text)
 
-        if any(text.endswith(punct) for punct in END_PUNCTUATION):
+        if not skip_end and any(text.endswith(punct) for punct in END_PUNCTUATION):
             tokens += [enc.eot_token]
         
         for i in range(1, len(tokens)):
@@ -142,7 +142,6 @@ class MLTT:
         edge = self.edges[edge_key]
 
         edge.add_case(attention, coords, alpha)
-        edge.is_wip = True
 
     def solve_debug(self):
         i = 0
