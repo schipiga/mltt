@@ -32,16 +32,15 @@ class Edge:
 
         self.coords_list = []
         self.coords_matrix = None
-        self.is_matrix = False
+        self.normalized_matrix = None
 
     def add_case(self, attention):
-        if not self.is_matrix:
+        if self.coords_matrix is None:
             self.coords_list.append(attention)
 
             if len(self.coords_list) >= self.ndim:
-                self.coords_matrix = np.column_stack(self.coords_list)
+                self.coords_matrix = np.array(self.coords_list).T
                 self.coords_list = None
-                self.is_matrix = True
         else:
             attn = attention.astype(ctype)
             current_slots = self.coords_matrix.astype(ctype)
@@ -54,6 +53,18 @@ class Edge:
 
             self.coords_matrix = (U_reduced @ np.diag(np.sqrt(S_reduced))).astype(stype)
 
+    def release(self):
+        if self.coords_matrix is None:
+            coords = np.array(self.coords_list).T
+        else:
+            coords = self.coords_matrix
+
+        slot_norms = np.linalg.norm(coords, axis=0)
+        slot_norms[slot_norms == 0] = 1e-4
+
+        self.normalized_matrix = (coords / slot_norms)
+        self.coords_list = None
+        self.coords_matrix = None
 
 class MLTT:
 
@@ -131,6 +142,9 @@ class MLTT:
         self.train = None
         self.train_step = None
 
+        for edge in self.edges.values():
+            edge.release()
+
     def generate(self, seed_text, length=100, temperature=1.0):
         length = length or self.window_size
         result_tokens = enc.encode(seed_text)
@@ -144,21 +158,25 @@ class MLTT:
             if not valid_edges:
                 break
 
-            attention = self._matrix_attention(context, last_token).astype(ctype)
-            attn_norm = attention / (np.linalg.norm(attention) + 1e-8)
+            attention = self._matrix_attention(context, last_token)
+            attn_norm = attention / (np.linalg.norm(attention) + 1e-4)
 
             edge_scores = []
 
             for edge in valid_edges:
-                if not edge.is_compressed:
-                    coords = np.column_stack(edge.coords_list).astype(ctype)
+                if edge.normalized_matrix is None:
+                    if edge.coords_matrix is None:
+                        coords = np.array(edge.coords_list).T
+                    else:
+                        coords = edge.coords_matrix
+
+                    slot_norms = np.linalg.norm(coords, axis=0)
+                    slot_norms[slot_norms == 0] = 1e-4
+
+                    normalized_coords = coords / slot_norms
                 else:
-                    coords = edge.coords_matrix.astype(ctype)
+                    normalized_coords = edge.normalized_matrix
 
-                slot_norms = np.linalg.norm(coords, axis=0)
-                slot_norms[slot_norms == 0] = 1e-8
-
-                normalized_coords = coords / slot_norms
                 cos_sims = attn_norm @ normalized_coords 
 
                 edge_scores.append(np.max(cos_sims))
