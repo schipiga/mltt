@@ -3,8 +3,6 @@ import tiktoken
 
 
 enc = tiktoken.get_encoding('gpt2')
-stype = np.float16
-ctype = np.float32
 END_PUNCTUATION = ('.', '!', '?', ".'", "!'","?'", '."', '!"', '?"')
 
 
@@ -16,19 +14,20 @@ class Node:
 
 class Attn:
 
-    def __init__(self, source_char, target_char, ndim):
+    def __init__(self, source_char, target_char, ndim, dtype):
         self.source = source_char
         self.target = target_char
-        self.coords = np.random.uniform(0.1, 0.9, ndim).astype(stype)
+        self.coords = np.random.uniform(0.1, 0.9, ndim).astype(dtype)
 
 
 class Edge:
-    def __init__(self, source_char, target_char, window_size, ndim):
+    def __init__(self, source_char, target_char, window_size, ndim, eps):
         self.source = source_char
         self.target = target_char
         self.window_size = window_size
         self.ndim = ndim
         self.flatten_dim = window_size * ndim
+        self.eps = eps
 
         self.coords_list = []
         self.coords_matrix = None
@@ -42,16 +41,15 @@ class Edge:
                 self.coords_matrix = np.array(self.coords_list).T
                 self.coords_list = None
         else:
-            attn = attention.astype(ctype)
-            current_slots = self.coords_matrix.astype(ctype)
-            temp_matrix = np.column_stack((current_slots, attn))
+            current_slots = self.coords_matrix
+            temp_matrix = np.column_stack((current_slots, attention))
 
             U, S, _ = np.linalg.svd(temp_matrix, full_matrices=False)
 
             U_reduced = U[:, :self.ndim]
             S_reduced = S[:self.ndim]
 
-            self.coords_matrix = (U_reduced @ np.diag(np.sqrt(S_reduced))).astype(stype)
+            self.coords_matrix = (U_reduced * np.sqrt(S_reduced))
 
     def release(self):
         if self.coords_matrix is None:
@@ -60,7 +58,7 @@ class Edge:
             coords = self.coords_matrix
 
         slot_norms = np.linalg.norm(coords, axis=0)
-        slot_norms[slot_norms == 0] = 1e-4
+        slot_norms[slot_norms == 0] = self.eps
 
         self.normalized_matrix = (coords / slot_norms)
         self.coords_list = None
@@ -68,17 +66,25 @@ class Edge:
 
 class MLTT:
 
-    def __init__(self, ndim=32, window_size=16):
+    def __init__(self, ndim=32, window_size=16, is_32bit=False):
         self.ndim = ndim
         self.window_size = window_size
-        self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim)).astype(stype)
+
+        if is_32bit:
+            self.dtype = np.float32
+            self.eps = 1e-8
+        else:
+            self.dtype = np.float64
+            self.eps = 1e-12
+
+        self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim)).astype(self.dtype)
 
         self.nodes = {}
         self.attns = {}
         self.edges = {}
         self.edges_by_src = {}
 
-        self._attn_buffer = np.zeros((window_size, ndim), dtype=stype)
+        self._attn_buffer = np.zeros((window_size, ndim), dtype=self.dtype)
 
     def _get_node(self, token_id):
         if token_id not in self.nodes:
@@ -88,7 +94,7 @@ class MLTT:
     def _get_attn(self, src_token, tgt_token):
         key = (src_token, tgt_token)
         if key not in self.attns:
-            self.attns[key] = Attn(src_token, tgt_token, self.ndim)
+            self.attns[key] = Attn(src_token, tgt_token, self.ndim, self.dtype)
         return self.attns[key]
 
     def _matrix_attention(self, context_tokens, focus_token):
@@ -103,22 +109,26 @@ class MLTT:
         if ctx_len < self.window_size:
             self._attn_buffer[ctx_len:] = 0.0
 
-        return self._attn_buffer.ravel()
+        return self._attn_buffer.flatten()
 
-    def train(self, text, skip_end=False):
+    def train(self, text, skip_end=False, log=False):
         tokens = enc.encode(text)
 
         if not skip_end and any(text.endswith(punct) for punct in END_PUNCTUATION):
             tokens += [enc.eot_token]
-        
-        for i in range(1, len(tokens)):
-            start_ctx = max(0, i - (self.window_size - 1))
-            context = tokens[start_ctx:i]
 
-            curr_token = context[-1]
+        if log:
+            print(f"Training on {len(tokens)} tokens...")
+
+        for i in range(self.window_size, len(tokens)):
+            start_ctx = i - self.window_size
+            context = tokens[start_ctx:i]
             next_token = tokens[i]
 
             self.train_step(context, next_token)
+
+            if log and i % 100 == 0:
+                print(f"Trained on {i} tokens")
 
     def train_step(self, context, next_token):
         if not context:
@@ -129,7 +139,7 @@ class MLTT:
 
         edge_key = (curr_token, next_token)
         if edge_key not in self.edges:
-            edge = Edge(curr_token, next_token, self.window_size, self.ndim)
+            edge = Edge(curr_token, next_token, self.window_size, self.ndim, self.eps)
             self.edges[edge_key] = edge
 
             if curr_token not in self.edges_by_src:
@@ -138,12 +148,20 @@ class MLTT:
 
         self.edges[edge_key].add_case(attention)
 
-    def release(self):
+    def release(self, log=False):
         self.train = None
         self.train_step = None
 
+        if log:
+            print(f"Releasing {len(self.edges.values())} edges...")
+            i = 0
+
         for edge in self.edges.values():
             edge.release()
+            if log:
+                i += 1
+                if i % 100 == 0:
+                    print(f"Released {i} edges")
 
     def generate(self, seed_text, length=100, temperature=1.0):
         length = length or self.window_size
@@ -159,7 +177,7 @@ class MLTT:
                 break
 
             attention = self._matrix_attention(context, last_token)
-            attn_norm = attention / (np.linalg.norm(attention) + 1e-4)
+            attn_norm = attention / (np.linalg.norm(attention) + self.eps)
 
             edge_scores = []
 
@@ -171,7 +189,7 @@ class MLTT:
                         coords = edge.coords_matrix
 
                     slot_norms = np.linalg.norm(coords, axis=0)
-                    slot_norms[slot_norms == 0] = 1e-4
+                    slot_norms[slot_norms == 0] = self.eps
 
                     normalized_coords = coords / slot_norms
                 else:
