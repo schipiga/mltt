@@ -112,4 +112,5 @@ for line in lines:
     i += 1
     if i % 10 == 0:
         print(f"Trained on {i} phrases...")
+
 model.solve()

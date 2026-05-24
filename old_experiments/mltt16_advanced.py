@@ -38,18 +38,15 @@ class Edge:
         self.tril_idx = tril_idx
         
         self.coords = np.empty(0, dtype=stype)
-        
-        # Точка безубыточности: когда сырых векторов становится слишком много
+
         self.threshold = self.flatten_dim // 2 
-        self.is_matrix = False # Флаг текущего состояния
-        self.count = 0         # Счетчик накопленных примеров
+        self.is_matrix = False
+        self.count = 0
         self.capacity = 4
 
-        # РЕЖИМ 1: "Копилка" (Сырые данные)
         self.raw_A = np.zeros((self.capacity, self.flatten_dim), dtype=stype)
         self.raw_B = np.zeros((self.capacity, self.window_size), dtype=stype)
 
-        # РЕЖИМ 2: "Матрица" (Создадутся только при эволюции)
         self.packed_dim = (self.flatten_dim * (self.flatten_dim + 1)) // 2
         self.S_AA = np.empty(0, dtype=stype)
         self.S_AB = np.empty((0, 0), dtype=stype)
@@ -72,9 +69,8 @@ class Edge:
                 
                 self.capacity = new_capacity
 
-            # Если alpha < 1.0, применяем затухание ко всем накопленным сырым векторам
             if alpha < 1.0:
-                decay = ctype(np.sqrt(alpha)) # Извлекаем корень, т.к. при A^T * A он возведется в квадрат
+                decay = ctype(np.sqrt(alpha))
                 self.raw_A[:self.count] = (self.raw_A[:self.count].astype(ctype) * decay).astype(stype)
                 self.raw_B[:self.count] = (self.raw_B[:self.count].astype(ctype) * decay).astype(stype)
 
@@ -82,11 +78,9 @@ class Edge:
             self.raw_B[self.count] = target_coords.astype(stype)
             self.count += 1
 
-            # Если пробили потолок рентабельности по памяти — эволюционируем!
             if self.count >= self.threshold:
                 self._evolve()
         else:
-            # Мы уже матрица, используем векторный трюк
             S_AA_comp = self.S_AA.astype(ctype)
             S_AB_comp = self.S_AB.astype(ctype)
 
@@ -103,16 +97,13 @@ class Edge:
         self.is_wip = True
 
     def _evolve(self):
-        """Превращает сырые списки в плотную матрицу S_AA (вызывается один раз за жизнь ребра)"""
         A = self.raw_A.astype(ctype)
         B = self.raw_B.astype(ctype)
-        
-        # Генерируем квадратную матрицу и сразу забираем из нее нижний треугольник
+
         S_AA_dense = A.T @ A
         self.S_AA = S_AA_dense[self.tril_idx].astype(stype)
         self.S_AB = (A.T @ B).astype(stype)
-        
-        # Сжигаем мосты: очищаем буферы для сырых данных
+
         self.raw_A = np.empty(0, dtype=stype)
         self.raw_B = np.empty((0, 0), dtype=stype)
         self.is_matrix = True
@@ -124,13 +115,12 @@ class Edge:
                 S_AA_dense[self.tril_idx] = self.S_AA.astype(ctype)
                 S_AB_comp = self.S_AB.astype(ctype)
             else:
-                # Если решаем прямо из сырых данных (редкое ребро)
                 A = self.raw_A[:self.count].astype(ctype)
                 B = self.raw_B[:self.count].astype(ctype)
                 S_AA_dense = A.T @ A
                 S_AB_comp = A.T @ B
 
-            S_AA_dense[self.diag_idx] += 1e-4 # Регуляризация Тихонова
+            S_AA_dense[self.diag_idx] += 1e-4
             
             try:
                 raw_coords = la.solve(S_AA_dense, S_AB_comp, assume_a='pos', lower=True)
@@ -140,7 +130,6 @@ class Edge:
             self.is_wip = False
             
     def clear_buffers(self):
-        """Утилита для жесткой очистки памяти извне"""
         self.raw_A = np.empty((0, 0), dtype=stype)
         self.raw_B = np.empty((0, 0), dtype=stype)
         self.S_AA = np.empty(0, dtype=stype)
