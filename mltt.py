@@ -30,17 +30,21 @@ class Edge:
         self.ndim = ndim
         self.flatten_dim = window_size * ndim
 
-        self.coords = np.zeros((self.flatten_dim, self.ndim), dtype=stype)
-        self.slots_filled = 0
+        self.coords_list = []
+        self.coords_matrix = None
+        self.is_matrix = False
 
     def add_case(self, attention):
-        attn = attention.astype(ctype)
+        if not self.is_matrix:
+            self.coords_list.append(attention)
 
-        if self.slots_filled < self.ndim:
-            self.coords[:, self.slots_filled] = attn
-            self.slots_filled += 1
+            if len(self.coords_list) >= self.ndim:
+                self.coords_matrix = np.column_stack(self.coords_list)
+                self.coords_list = None
+                self.is_matrix = True
         else:
-            current_slots = self.coords.astype(ctype)
+            attn = attention.astype(ctype)
+            current_slots = self.coords_matrix.astype(ctype)
             temp_matrix = np.column_stack((current_slots, attn))
 
             U, S, _ = np.linalg.svd(temp_matrix, full_matrices=False)
@@ -48,12 +52,12 @@ class Edge:
             U_reduced = U[:, :self.ndim]
             S_reduced = S[:self.ndim]
 
-            self.coords = (U_reduced @ np.diag(np.sqrt(S_reduced))).astype(stype)
+            self.coords_matrix = (U_reduced @ np.diag(np.sqrt(S_reduced))).astype(stype)
 
 
 class MLTT:
 
-    def __init__(self, ndim=16, window_size=16):
+    def __init__(self, ndim=32, window_size=16):
         self.ndim = ndim
         self.window_size = window_size
         self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim)).astype(stype)
@@ -141,18 +145,25 @@ class MLTT:
                 break
 
             attention = self._matrix_attention(context, last_token).astype(ctype)
-
             attn_norm = attention / (np.linalg.norm(attention) + 1e-8)
 
-            edges_matrices = np.stack([edge.coords for edge in valid_edges]).astype(ctype)
+            edge_scores = []
 
-            slot_norms = np.linalg.norm(edges_matrices, axis=1, keepdims=True)
-            slot_norms[slot_norms == 0] = 1e-8
-            normalized_edges = edges_matrices / slot_norms
+            for edge in valid_edges:
+                if not edge.is_compressed:
+                    coords = np.column_stack(edge.coords_list).astype(ctype)
+                else:
+                    coords = edge.coords_matrix.astype(ctype)
 
-            cos_sims = np.einsum('i,kij->kj', attn_norm, normalized_edges)
+                slot_norms = np.linalg.norm(coords, axis=0)
+                slot_norms[slot_norms == 0] = 1e-8
 
-            edge_scores = np.max(cos_sims, axis=1)
+                normalized_coords = coords / slot_norms
+                cos_sims = attn_norm @ normalized_coords 
+
+                edge_scores.append(np.max(cos_sims))
+
+            edge_scores = np.array(edge_scores)
 
             if temperature <= 1e-3:
                 best_edge_idx = np.argmax(edge_scores)
