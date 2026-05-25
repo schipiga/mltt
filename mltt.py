@@ -195,9 +195,9 @@ class MLTT:
                 else:
                     normalized_coords = edge.normalized_matrix
 
-                cos_sims = attn_norm @ normalized_coords 
+                cos_sims = attn_norm @ normalized_coords
 
-                edge_scores.append(np.max(cos_sims))
+                edge_scores.append(np.linalg.norm(cos_sims))
 
             edge_scores = np.array(edge_scores)
 
