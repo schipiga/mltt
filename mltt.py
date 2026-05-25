@@ -1,3 +1,4 @@
+import pickle
 import numpy as np
 import tiktoken
 
@@ -219,3 +220,12 @@ class MLTT:
             result_tokens.append(next_token)
 
         return enc.decode(result_tokens)
+
+    def save(self, filepath):
+        with open(filepath, 'wb') as fp:
+            pickle.dump(self, fp, protocol=pickle.HIGHEST_PROTOCOL)
+
+    @staticmethod
+    def load(filepath):
+        with open(filepath, 'rb') as fp:
+            return pickle.load(fp)
