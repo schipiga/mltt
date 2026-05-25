@@ -109,7 +109,7 @@ class MLTT:
         if ctx_len < self.window_size:
             self._attn_buffer[ctx_len:] = 0.0
 
-        return self._attn_buffer.flatten()
+        return self._attn_buffer.flatten(order='F')
 
     def train(self, text, skip_end=False, log=False):
         tokens = enc.encode(text)
@@ -197,7 +197,7 @@ class MLTT:
 
                 cos_sims = attn_norm @ normalized_coords
 
-                edge_scores.append(np.linalg.norm(cos_sims))
+                edge_scores.append(np.max(cos_sims))
 
             edge_scores = np.array(edge_scores)
 
