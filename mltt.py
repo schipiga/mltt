@@ -7,12 +7,6 @@ enc = tiktoken.get_encoding('gpt2')
 END_PUNCTUATION = ('.', '!', '?', ".'", "!'","?'", '."', '!"', '?"')
 
 
-class Node:
-
-    def __init__(self, char):
-        self.char = char
-
-
 class Attn:
 
     def __init__(self, source_char, target_char, ndim, dtype):
@@ -70,6 +64,9 @@ class MLTT:
     def __init__(self, ndim=32, window_size=16, is_32bit=False):
         self.ndim = ndim
         self.window_size = window_size
+        self.attns = {}
+        self.edges = {}
+        self.edges_by_src = {}
 
         if is_32bit:
             self.dtype = np.float32
@@ -78,19 +75,8 @@ class MLTT:
             self.dtype = np.float64
             self.eps = 1e-12
 
-        self.pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim)).astype(self.dtype)
-
-        self.nodes = {}
-        self.attns = {}
-        self.edges = {}
-        self.edges_by_src = {}
-
+        self._pos_matrix = np.random.uniform(0.1, 0.9, (window_size, ndim)).astype(self.dtype)
         self._attn_buffer = np.zeros((window_size, ndim), dtype=self.dtype)
-
-    def _get_node(self, token_id):
-        if token_id not in self.nodes:
-            self.nodes[token_id] = Node(token_id)
-        return self.nodes[token_id]
 
     def _get_attn(self, src_token, tgt_token):
         key = (src_token, tgt_token)
@@ -105,7 +91,7 @@ class MLTT:
         for idx, t in enumerate(context_tokens):
             self._attn_buffer[idx] = self._get_attn(t, focus_token).coords
 
-        self._attn_buffer[:ctx_len] *= self.pos_matrix[:ctx_len]
+        self._attn_buffer[:ctx_len] *= self._pos_matrix[:ctx_len]
 
         if ctx_len < self.window_size:
             self._attn_buffer[ctx_len:] = 0.0
@@ -114,9 +100,9 @@ class MLTT:
 
     def train(self, text, skip_end=False, log=False):
         tokens = enc.encode(text)
-
         if not skip_end and any(text.endswith(punct) for punct in END_PUNCTUATION):
             tokens += [enc.eot_token]
+        tokens = [enc.eot_token] * self.window_size + tokens
 
         if log:
             print(f"Training on {len(tokens)} tokens...")
@@ -164,12 +150,13 @@ class MLTT:
                 if i % 100 == 0:
                     print(f"Released {i} edges")
 
-    def generate(self, seed_text, length=100, temperature=1.0):
+    def generate(self, seed_text, length=100, temperature=0.0):
         length = length or self.window_size
         result_tokens = enc.encode(seed_text)
+        result_tokens = [enc.eot_token] * self.window_size + result_tokens
 
         for _ in range(length):
-            start_ctx = max(0, len(result_tokens) - (self.window_size - 1))
+            start_ctx = len(result_tokens) - self.window_size
             context = result_tokens[start_ctx:]
             last_token = context[-1]
 
@@ -219,7 +206,7 @@ class MLTT:
 
             result_tokens.append(next_token)
 
-        return enc.decode(result_tokens)
+        return enc.decode(result_tokens[self.window_size:])
 
     def save(self, filepath):
         with open(filepath, 'wb') as fp:

@@ -40,10 +40,7 @@ Using matrix "magic" (`np.linalg.solve`), the global mathematical compromise for
 ```python
 from mltt import MLTT
 
-data = """Deep learning is a subset of machine learning that utilizes multilayered artificial neural networks, 
-inspired by the human brain, to autonomously process unstructured data, recognize complex patterns, 
-and make predictions. It is the driving force behind modern artificial intelligence, including 
-computer vision and language models."""
+data = "Deep learning is a subset of machine learning that utilizes multilayered artificial neural networks, inspired by the human brain, to autonomously process unstructured data, recognize complex patterns, and make predictions. It is the driving force behind modern artificial intelligence, including computer vision and language models."
 
 model = MLTT()
 
